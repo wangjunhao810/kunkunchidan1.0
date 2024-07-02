@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>坤坤吃蛋</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            background: #87CEEB;
+            overflow: hidden;
+        }
+        #startButton, #restartButton {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            padding: 10px 20px;
+            background: #008CBA;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #restartButton {
+            display: none;
+        }
+        #score {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            font-size: 20px;
+            color: #FFF;
+        }
+        .pigeon, .egg, .eagle {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+        }
+        .pigeon {
+            background: url('蔡徐坤-copy.png') no-repeat center center / cover;
+        }
+        .egg {
+            background: url('鸡蛋.png') no-repeat center center / cover;
+            transition: transform 1s linear;
+        }
+        .egg.broken {
+            background: url('碎鸡蛋.png') no-repeat center center / cover;
+        }
+        .eagle {
+            background: url('卡通老鹰.png') no-repeat center center / cover;
+        }
+        #gameOverMessage {
+            display: none;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 30px;
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <button id="startButton">开始游戏</button>
+        <button id="restartButton">重新开始</button>
+        <div id="score">分数: 0</div>
+        <div id="gameOverMessage">你干嘛~哈哈~哎呦</div>
+    </div>
+    <audio id="bgMusic" src="坤音.mp3" loop></audio>
+    <audio id="gameOverSound" src="你干嘛哈哈.mp3"></audio>
+    <audio id="eggCollectSound1" src="唱.mp3"></audio>
+    <audio id="eggCollectSound2" src="跳.mp3"></audio>
+    <audio id="eggCollectSound3" src="rap.mp3"></audio>
+    <audio id="startSound" src="哇真的是你.mp3"></audio>
+    <audio id="eagleHitSound" src="啊.mp3"></audio>
+
+    <script>
+        const gameContainer = document.getElementById('gameContainer');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const scoreDisplay = document.getElementById('score');
+        const gameOverMessage = document.getElementById('gameOverMessage');
+        const bgMusic = document.getElementById('bgMusic');
+        const gameOverSound = document.getElementById('gameOverSound');
+        const eagleHitSound = document.getElementById('eagleHitSound');
+
+        let score = 0;
+        let pigeon, gameInterval, eagleInterval, eggInterval, difficultyInterval;
+        let isGameOver = false;
+        let isInvincible = false;
+
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', restartGame);
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'ControlLeft' || e.code === 'ControlRight') {
+                isInvincible = true;
+                setTimeout(() => isInvincible = false, 5000); // 5秒无敌时间
+            }
+        });
+
+        function startGame() {
+            const startSound = document.getElementById('startSound');
+            startSound.currentTime = 0; // 重置音效时间
+            startSound.play(); // 播放开始游戏音效
+
+            bgMusic.play();
+            startButton.style.display = 'none';
+            restartButton.style.display = 'none';
+            score = 0;
+            scoreDisplay.textContent = '分数: 0';
+            isGameOver = false;
+            isInvincible = false;
+
+            // 创建鸽鸽
+            pigeon = document.createElement('div');
+            pigeon.className = 'pigeon';
+            gameContainer.appendChild(pigeon);
+
+            // 鼠标控制鸽鸽位置
+            gameContainer.addEventListener('mousemove', (e) => {
+                const rect = gameContainer.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                pigeon.style.left = `${mouseX - pigeon.offsetWidth / 2}px`;
+                pigeon.style.top = `${mouseY - pigeon.offsetHeight / 2}px`;
+            });
+
+            gameInterval = setInterval(updateGame, 20);
+            eagleInterval = setInterval(createEagle, 500);
+            eggInterval = setInterval(createEgg, 1500);
+            difficultyInterval = setInterval(increaseDifficulty, 5000); // 每5秒增加难度
+        }
+
+        function restartGame() {
+            gameOverMessage.style.display = 'none';
+            restartButton.style.display = 'none';
+            startGame();
+        }
+
+        function updateGame() {
+            if (isGameOver) return;
+            
+            const pigeonsRect = pigeon.getBoundingClientRect();
+            const eggs = document.querySelectorAll('.egg');
+            const eagles = document.querySelectorAll('.eagle');
+
+            eggs.forEach(egg => {
+                const eggRect = egg.getBoundingClientRect();
+                egg.style.transform = `rotate(${egg.offsetTop * 2}deg)`;
+                if (eggRect.top > window.innerHeight) {
+                    egg.classList.add('broken');
+                    setTimeout(() => egg.remove(), 500); // 碎鸡蛋动画结束后移除
+                } else if (isColliding(pigeonsRect, eggRect)) {
+                    score++;
+                    playRandomEggSound(); // 播放随机鸡蛋音效
+                    scoreDisplay.textContent = `分数: ${score}`;
+                    egg.remove();
+                    if (score >= 25) {
+                        alert('恭喜你，通关成功！');
+                        endGame();
+                    }
+                } else {
+                    egg.style.top = `${egg.offsetTop + 5}px`;
+                }
+            });
+
+            eagles.forEach(eagle => {
+                const eagleRect = eagle.getBoundingClientRect();
+                if (eagleRect.top > window.innerHeight) {
+                    eagle.remove();
+                } else {
+                    eagle.style.left = `${parseInt(eagle.style.left) + Math.random() * 10 - 5}px`; // 随机水平移动
+                    if (isColliding(pigeonsRect, eagleRect) && !isInvincible) {
+                        eagleHitSound.play(); // 播放老鹰碰撞音效
+                        eagleHitSound.onended = () => {
+                            endGame();
+                        };
+                        pauseGame();
+                    } else {
+                        eagle.style.top = `${eagle.offsetTop + 5}px`;
+                    }
+                }
+            });
+        }
+
+        function createEgg() {
+            if (isGameOver) return;
+
+            const egg = document.createElement('div');
+            egg.className = 'egg';
+            egg.style.left = `${Math.random() * (gameContainer.offsetWidth - 50)}px`;
+            egg.style.top = '0px';
+            gameContainer.appendChild(egg);
+        }
+
+        function createEagle() {
+            if (isGameOver) return;
+
+            const eagle = document.createElement('div');
+            eagle.className = 'eagle';
+            eagle.style.left = `${Math.random() * (gameContainer.offsetWidth - 50)}px`;
+            eagle.style.top = '0px';
+            gameContainer.appendChild(eagle);
+
+            // 随机决定向左或向右移动
+            const direction = Math.random() >= 0.5 ? 1 : -1; // 1代表向右，-1代表向左
+            const speed = 5; // 控制移动速度
+
+            function moveEagle() {
+                if (isGameOver) return;
+
+                const currentLeft = parseFloat(eagle.style.left);
+                const newLeft = currentLeft + direction * speed;
+                eagle.style.left = `${newLeft}px`;
+
+                if (newLeft < 0 || newLeft > gameContainer.offsetWidth - eagle.offsetWidth) {
+                    eagle.remove(); // 如果超出边界，移除老鹰
+                } else {
+                    setTimeout(moveEagle, 500); // 每500毫秒移动一次
+                }
+            }
+
+            moveEagle(); // 启动移动函数
+        }
+
+        function isColliding(rect1, rect2) {
+            return !(rect1.right < rect2.left || 
+                     rect1.left > rect2.right || 
+                     rect1.bottom < rect2.top ||
+                     rect1.top > rect2.bottom);
+        }
+
+        function increaseDifficulty() {
+            clearInterval(eagleInterval);
+            eagleInterval = setInterval(createEagle, Math.max(200, 500 / (1.5 ** (score / 10))));
+        }
+
+        function endGame() {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            clearInterval(eagleInterval);
+            clearInterval(eggInterval);
+            clearInterval(difficultyInterval);
+            bgMusic.pause();
+            gameOverSound.play();
+            gameOverMessage.style.display = 'block';
+            restartButton.style.display = 'block';
+
+            // 移除所有游戏元素
+            document.querySelectorAll('.egg, .eagle').forEach(el => el.remove());
+            pigeon.remove();
+        }
+
+        function playRandomEggSound() {
+            const randomNum = Math.floor(Math.random() * 3) + 1; // 随机生成1到3之间的整数
+            const eggSound = document.getElementById(`eggCollectSound${randomNum}`);
+            eggSound.currentTime = 0; // 重置音效时间
+            eggSound.play(); // 播放随机鸡蛋音效
+        }
+
+        function pauseGame() {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            clearInterval(eagleInterval);
+            clearInterval(eggInterval);
+            clearInterval(difficultyInterval);
+            bgMusic.pause();
+        }
+    </script>
+</body>
+</html>
